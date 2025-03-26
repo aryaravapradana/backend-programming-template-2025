@@ -4,8 +4,11 @@ const usersController = require('./users-controller');
 
 const route = express.Router();
 
-module.exports = (app) => {
+module.exports = (app);
   app.use('/users', route);
+
+  // Login user
+  route.post('/authentication/login', usersController.loginUser);
 
   // Get list of users
   route.get('/', usersController.getUsers);
@@ -14,7 +17,7 @@ module.exports = (app) => {
   route.post('/', usersController.createUser);
 
   // Get user detail
-  route.get('/:id', usersController.getUser);
+  route.get('/:id', usersController.getUsers);
 
   // Update user
   route.put('/:id', usersController.updateUser);

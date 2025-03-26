@@ -1,26 +1,48 @@
 const usersService = require('./users-service');
 const { errorResponder, errorTypes } = require('../../../core/errors');
 const { hashPassword } = require('../../../utils/password');
+const { comparePassword } = require('../../../utils/password');
+
+async function loginUser(request, response, next) {
+  try {
+    const { email, password } = request.body;
+
+    if (!email) {
+      throw errorResponder(errorTypes.VALIDATION_ERROR, 'Email is required');
+    }
+
+    if (!password) {
+      throw errorResponder(errorTypes.VALIDATION_ERROR, 'Password is required');
+    }
+
+    const user = await usersService.getUserByEmail(email);
+    if (!user) {
+      throw errorResponder(
+        errorTypes.UNAUTHORIZED,
+        'Invalid email or password'
+      );
+    }
+
+    // Cek apakah password cocok
+    const isMatch = await comparePassword(password, user.password);
+    if (!isMatch) {
+      throw errorResponder(
+        errorTypes.UNAUTHORIZED,
+        'Invalid email or password'
+      );
+    }
+
+    return response.status(200).json({ message: 'Login successful', user });
+  } catch (error) {
+    return next(error);
+  }
+}
 
 async function getUsers(request, response, next) {
   try {
     const users = await usersService.getUsers();
 
     return response.status(200).json(users);
-  } catch (error) {
-    return next(error);
-  }
-}
-
-async function getUser(request, response, next) {
-  try {
-    const user = await usersService.getUser(request.params.id);
-
-    if (!user) {
-      throw errorResponder(errorTypes.UNPROCESSABLE_ENTITY, 'User not found');
-    }
-
-    return response.status(200).json(user);
   } catch (error) {
     return next(error);
   }
@@ -146,32 +168,64 @@ async function updateUser(request, response, next) {
 }
 
 async function changePassword(request, response, next) {
-  // TODO: Implement this function
-  // const id = request.params.id;
-  // const {
-  //   old_password: oldPassword,
-  //   new_password: newPassword,
-  //   confirm_new_password: confirmNewPassword,
-  // } = request.body;
-  //
-  // Make sure that:
-  // - the user exists by checking the user ID
-  // - the old password is correct
-  // - the new password is at least 8 characters long
-  // - the new password is different from the old password
-  // - the new password and confirm new password match
-  //
-  // Note that the password is hashed in the database, so you need to
-  // compare the hashed password with the old password. Use the passwordMatched
-  // function from src/utils/password.js to compare the old password with the
-  // hashed password.
-  //
-  // If any of the conditions above is not met, return an error response
-  // with the appropriate status code and message.
-  //
-  // If all conditions are met, update the user's password and return
-  // a success response.
-  return next(errorResponder(errorTypes.NOT_IMPLEMENTED));
+  try {
+    const { id } = request.params;
+    const {
+      old_password: oldPassword,
+      new_password: newPassword,
+      confirm_new_password: confirmNewPassword,
+    } = request.body;
+
+    const user = await usersService.getUser(id);
+    if (!user) {
+      throw errorResponder(errorTypes.UNPROCESSABLE_ENTITY, 'User not found');
+    }
+
+    const isMatch = await hashPassword(oldPassword, user.password);
+    if (!isMatch) {
+      throw errorResponder(
+        errorTypes.VALIDATION_ERROR,
+        'Old password is incorrect'
+      );
+    }
+
+    if (newPassword.length < 8) {
+      throw errorResponder(
+        errorTypes.VALIDATION_ERROR,
+        'New password must be at least 8 characters long'
+      );
+    }
+
+    if (oldPassword === newPassword) {
+      throw errorResponder(
+        errorTypes.VALIDATION_ERROR,
+        'New password must be different from the old password'
+      );
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      throw errorResponder(
+        errorTypes.VALIDATION_ERROR,
+        'New password and confirm password do not match'
+      );
+    }
+
+    const hashedNewPassword = await hashPassword(newPassword);
+    const success = await usersService.updatePassword(id, hashedNewPassword);
+
+    if (!success) {
+      throw errorResponder(
+        errorTypes.UNPROCESSABLE_ENTITY,
+        'Failed to change password'
+      );
+    }
+
+    return response
+      .status(200)
+      .json({ message: 'Password changed successfully' });
+  } catch (error) {
+    return next(errorResponder(errorTypes.NOT_IMPLEMENTED));
+  }
 }
 
 async function deleteUser(request, response, next) {
@@ -193,9 +247,9 @@ async function deleteUser(request, response, next) {
 
 module.exports = {
   getUsers,
-  getUser,
   createUser,
   updateUser,
   changePassword,
   deleteUser,
+  loginUser,
 };
